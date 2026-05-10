@@ -2,18 +2,18 @@
 clear; clc; close all;
 
 % 1. Simulation Parameters
-N_iter = 40;         % Number of measurement iterations
-T = 2;             % Time step between measurements (s)
+N_iter = 5;         % Number of measurement iterations
+T = 1;             % Time step between measurements (s)
 a_max = 0.0;        % Maximum target acceleration (m/s^2)
-a_own_max = 0.2;    % Maximum own-ship acceleration (m/s^2)
-R0 = 200; V0 = 150; % Initial uncertainty bounds
+a_own_max = 0.05;    % Maximum own-ship acceleration (m/s^2)
+R0 = 2000; V0 = 1500; % Initial uncertainty bounds
 
 % Initial Relative State Estimate: X = [rx; vx; ry; vy]
 mu_current = [0; 0; 0; 0]; 
 P_current = blkdiag([R0^2 0; 0 V0^2], [R0^2 0; 0 V0^2]);
 
 % True Relative Target Trajectory 
-X_true = [100;5;50;-5]; 
+X_true = [500;58;700;-10]; 
 
 % 2. Dynamics and Reachability Gramian
 Phi_2D = [1 T; 0 1];
@@ -21,7 +21,7 @@ G_2D   = [ (1/3)*T^3, (1/2)*T^2; (1/2)*T^2, T ];
 Gamma_2D = [0.5*T^2; T]; % Input mapping matrix
 
 Phi_4D = blkdiag(Phi_2D, Phi_2D);
-G_4D   = (a_own_max^2) * blkdiag(G_2D, G_2D);
+G_4D   = 0*(a_own_max^2) * blkdiag(G_2D, G_2D);
 
 % Gamma_4D maps 2D accelerations [ax; ay] into the 4D state vector
 Gamma_4D = [Gamma_2D(1) 0; 
@@ -33,7 +33,8 @@ Gamma_4D = [Gamma_2D(1) 0;
 t_vec = zeros(1, N_iter);
 err_pos = zeros(1, N_iter);
 err_vel = zeros(1, N_iter);
-
+mu_current_vec =[];
+X_true_vec = [];
 % Setup Figure and Visualization parameters
 figure('Color', 'w', 'Position', [100 100 1200 800]);
 colors = lines(N_iter); % Colormap for iteration stages
@@ -61,6 +62,7 @@ for k = 1:N_iter
     % --- B. Simulate True Relative Target ---
     % Relative state shifts by (Target Accel - Ownship Accel)
     X_true = Phi_4D * X_true + Gamma_4D * a_tgt - Gamma_4D * a_own;
+    X_true_vec = [X_true_vec X_true]
     
     % Sensor takes a precise bearing measurement of the true relative target
     beta = atan2(X_true(1), X_true(3)); 
@@ -86,7 +88,7 @@ for k = 1:N_iter
     % Extract the center and shape of the 3D slice
     mu_current = mu_pred - P_pred * H' * (1/S) * (H * mu_pred);
     P_c = P_pred - P_pred * H' * (1/S) * H * P_pred;
-    
+    mu_current_vec = [mu_current_vec mu_current]
     % CRITICAL: Scale the new covariance to account for off-center cuts
     scale_sq = 1 - d2; 
     P_current = P_c * scale_sq; 
@@ -99,6 +101,7 @@ for k = 1:N_iter
     err_vel(k) = norm(X_true([2,4]) - mu_current([2,4]));
     
     % --- F. VISUALIZATION ---
+    plot(mu_current([1]),mu_current([3]),'*')
     plot_projection(1, mu_pred, P_pred, mu_current, P_current, [1, 2], circle, colors(k,:), k, T);
     plot_projection(2, mu_pred, P_pred, mu_current, P_current, [3, 4], circle, colors(k,:), k, T);
     
@@ -138,7 +141,10 @@ grid on;
 xlim([0 t_vec(end) + T/2]);
 ax = gca; ax.YAxis(1).Color = [0 0.4470 0.7410]; ax.YAxis(2).Color = [0.8500 0.3250 0.0980];
 
-
+figure
+plot(mu_current_vec(1,:),mu_current_vec(3,:),'r')
+hold on
+plot(X_true_vec(1,:),X_true_vec(3,:),'b')
 %% Helper Function for Projecting, Plotting, and Labeling 2D Ellipses
 function plot_projection(sub_idx, mu_pred, P_pred, mu_upd, P_upd, dims, circle, color, iter, T)
     subplot(2,2,sub_idx); hold on;
